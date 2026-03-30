@@ -362,6 +362,42 @@ The generated IDE config files include instructions for the AI agent to follow t
 2. **During work** — log actions with `uctx_daily_log`, record solutions and learnings
 3. **Session end** — save a summary with `uctx_save_conversation`
 
+**Detailed guide:** See [UNIFIED-CONTEXT-INSTRUCTIONS.md](./.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md) for how AI agents should use these tools.
+
+---
+
+## Tool Reference
+
+All 17 MCP tools are documented in **[MCP_TOOLS.md](./MCP_TOOLS.md)** with examples, parameters, and use cases.
+
+Key tools:
+- `uctx_read_index` — load context overview at session start
+- `uctx_save_conversation` ⭐ — **save session summary at end** (most important)
+- `uctx_daily_log` — log progress during work
+- `uctx_save_solution`, `uctx_save_learning`, `uctx_save_note` — record knowledge and decisions
+- `uctx_list_tasks`, `uctx_complete_task` — track work items
+
+---
+
+## Updating
+
+The MCP server is installed from GitHub. To update when new features are added:
+
+```bash
+uv tool upgrade unified-context    # if using uv
+# or
+pip install --upgrade git+https://github.com/anilcelexsa/unified-context.git
+```
+
+Then re-run IDE setup to update binary paths (if needed):
+```bash
+uctx setup claude-code
+uctx setup cursor
+uctx setup vscode
+```
+
+See **[UPDATING.md](./UPDATING.md)** for full instructions.
+
 ---
 
 ## Multi-IDE example
