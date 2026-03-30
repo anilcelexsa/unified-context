@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: unified-context
+Version: 1.0.0
+Summary: Cross-IDE shared context system for AI coding tools
+Author: Edward Anil Joseph
+License-Expression: MIT
+Requires-Python: >=3.10
+Requires-Dist: click>=8.1
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.0
+Requires-Dist: watchdog>=4.0
+Requires-Dist: portalocker>=2.7
+Requires-Dist: mcp>=1.0
+Requires-Dist: gitpython>=3.1

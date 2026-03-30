@@ -1,0 +1,3 @@
+[console_scripts]
+uctx = unified_context.cli:main
+uctx-mcp = unified_context.mcp_server:main

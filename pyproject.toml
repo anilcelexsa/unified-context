@@ -1,0 +1,27 @@
+[project]
+name = "unified-context"
+version = "1.0.0"
+description = "Cross-IDE shared context system for AI coding tools"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Edward Anil Joseph" }]
+dependencies = [
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "watchdog>=4.0",
+    "portalocker>=2.7",
+    "mcp>=1.0",
+    "gitpython>=3.1",
+]
+
+[project.scripts]
+uctx = "unified_context.cli:main"
+uctx-mcp = "unified_context.mcp_server:main"
+
+[tool.setuptools]
+packages = ["unified_context"]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"

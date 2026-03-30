@@ -1,0 +1,7 @@
+click>=8.1
+pyyaml>=6.0
+rich>=13.0
+watchdog>=4.0
+portalocker>=2.7
+mcp>=1.0
+gitpython>=3.1
