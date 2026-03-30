@@ -10,7 +10,7 @@ When you work across VS Code, Cursor, Windsurf, and Claude Code on the same proj
 
 - A `.uctx/` directory in your project root stores conversations, tasks, solutions, learnings, and daily logs as human-readable Markdown + YAML
 - An MCP server (`uctx-mcp`) exposes that store to any MCP-compatible IDE as 17 tools
-- Commit `.uctx/` to git — teammates and other IDEs stay in sync automatically
+- Commit `.uctx/` to git and push — teammates and other IDEs stay in sync
 - The AI agent handles reading and writing context; you just work normally
 
 ```
@@ -31,16 +31,16 @@ When you work across VS Code, Cursor, Windsurf, and Claude Code on the same proj
 
 ## Supported IDEs
 
-| IDE | Config generated |
-|-----|-----------------|
-| VS Code | `.vscode/mcp.json` |
-| Cursor | `.cursor/mcp.json` + `.cursorrules` |
-| Windsurf | `.windsurf/mcp.json` + `.windsurf/rules.md` |
-| Claude Code | `.claude/mcp.json` + `.claude/CLAUDE.md` |
-| Kiro (AWS) | `.kiro/settings/mcp.json` |
-| Trae (ByteDance) | `.trae/mcp.json` |
-| Zed | `.zed/settings-uctx-snippet.json` |
-| Antigravity (Google) | `.vscode/mcp.json` |
+| IDE | Auto-setup command | Config path |
+|-----|--------------------|-------------|
+| VS Code | `uctx setup vscode` | `.vscode/mcp.json` |
+| Cursor | `uctx setup cursor` | `.cursor/mcp.json` + `.cursorrules` |
+| Windsurf | `uctx setup windsurf` | `.windsurf/mcp.json` + `.windsurf/rules.md` |
+| Claude Code | `uctx setup claude-code` | `.claude/mcp.json` + `.claude/CLAUDE.md` |
+| Kiro (AWS) | `uctx setup kiro` | `.kiro/settings/mcp.json` |
+| Trae (ByteDance) | `uctx setup trae` | `.trae/mcp.json` |
+| Zed | `uctx setup zed` | snippet — see [Zed setup](#zed-setup) |
+| Antigravity (Google) | `uctx setup antigravity` | `.vscode/mcp.json` |
 
 ---
 
@@ -52,6 +52,13 @@ uv tool install git+https://github.com/anilcelexsa/unified-context.git
 
 This installs `uctx` and `uctx-mcp` as isolated CLI tools on your PATH — no virtual environment setup needed.
 
+After install, make sure the shims are on your PATH:
+
+```bash
+uv tool update-shell   # adds uv's tool bin dir to PATH
+# then restart your terminal and IDE
+```
+
 Alternatively with pip:
 
 ```bash
@@ -59,6 +66,8 @@ pip install git+https://github.com/anilcelexsa/unified-context.git
 ```
 
 Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/) (recommended) or pip.
+
+> **Note:** `uctx setup <ide>` resolves the full path to `uctx-mcp` at setup time and writes it into the MCP config. If you reinstall or move the binary, re-run `uctx setup <ide>` to update the path.
 
 ---
 
@@ -79,9 +88,229 @@ uctx setup vscode
 # 4. Commit .uctx/ so other IDEs and teammates share the same context
 git add .uctx/
 git commit -m "add unified context store"
+git push
 ```
 
-That's it. The AI agent will now call `uctx_read_index` at session start and keep the store updated automatically.
+The AI agent will now call `uctx_read_index` at session start and keep the store updated automatically.
+
+---
+
+## Git sync
+
+Context is synced via plain git — there is no background daemon or auto-push.
+
+**Recommended workflow:**
+
+```bash
+# Pull latest context before starting a session
+git pull
+
+# After a session (or at end of day), commit and push
+git add .uctx/
+git commit -m "uctx: update context"
+git push
+```
+
+The `.uctx/` directory only excludes lock files and `.sync-state` — everything else (conversations, tasks, solutions, learnings, daily logs) is committed and shared.
+
+If two IDEs write simultaneously and git reports a conflict in `.uctx/`, the files are plain Markdown — open them, keep both entries, and commit the merge.
+
+---
+
+## Per-IDE manual configuration
+
+If `uctx setup` doesn't work for your environment, configure the MCP server manually. Replace `FULL_PATH_TO_UCTX_MCP` with the output of `which uctx-mcp` (Mac/Linux) or `where uctx-mcp` (Windows), and set `UCTX_PROJECT_ROOT` to your project path.
+
+### VS Code
+
+File: `.vscode/mcp.json` — note the root key is `"servers"`, not `"mcpServers"`.
+
+```json
+{
+  "servers": {
+    "unified-context": {
+      "type": "stdio",
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  }
+}
+```
+
+Requires Copilot Agent mode. Verify: open Copilot chat → Agent mode → type "Read the project context index".
+
+### Antigravity (Google)
+
+Same config and path as VS Code (it is a VS Code fork):
+
+```json
+{
+  "servers": {
+    "unified-context": {
+      "type": "stdio",
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+File: `.cursor/mcp.json` — no `"type"` field (Cursor infers stdio from the command).
+
+```json
+{
+  "mcpServers": {
+    "unified-context": {
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  }
+}
+```
+
+### Windsurf
+
+File: `.windsurf/mcp.json` — same format as Cursor.
+
+```json
+{
+  "mcpServers": {
+    "unified-context": {
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  }
+}
+```
+
+### Trae (ByteDance)
+
+File: `.trae/mcp.json` — **`"mcpServers"` is an array**, not an object. Command is also an array.
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "unified-context",
+      "command": ["FULL_PATH_TO_UCTX_MCP"],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  ]
+}
+```
+
+> Wrong format (object instead of array) causes silent failure — no error shown.
+
+### Kiro (AWS)
+
+File: `.kiro/settings/mcp.json` — supports `autoApprove` for read-only tools so they run without confirmation prompts.
+
+```json
+{
+  "mcpServers": {
+    "unified-context": {
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "uctx_read_index",
+        "uctx_list_conversations",
+        "uctx_list_solutions",
+        "uctx_list_tasks",
+        "uctx_list_learnings",
+        "uctx_get_daily_log",
+        "uctx_search",
+        "uctx_stats",
+        "uctx_read_file"
+      ]
+    }
+  }
+}
+```
+
+### Claude Code
+
+File: `.claude/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "unified-context": {
+      "type": "stdio",
+      "command": "FULL_PATH_TO_UCTX_MCP",
+      "args": [],
+      "env": {
+        "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+      }
+    }
+  }
+}
+```
+
+### Other VS Code forks
+
+- If the fork reads `.vscode/mcp.json` with `"servers"` key → use the VS Code config above
+- If it has its own config dir with `"mcpServers"` → use the Cursor pattern
+- Run `uctx setup vscode` as a first try and check if the IDE picks it up
+
+---
+
+## Zed setup
+
+Zed is the exception — it uses a **user-level** config file, not a project-level one, and uses `"context_servers"` instead of `"mcpServers"`.
+
+`uctx setup zed` generates a snippet file at `.zed/settings-uctx-snippet.json`. You must merge it manually:
+
+**Windows:**
+```powershell
+notepad "$env:APPDATA\Zed\settings.json"
+```
+
+**Mac/Linux:**
+```bash
+nano ~/.config/zed/settings.json
+```
+
+Merge this block into your settings:
+
+```json
+{
+  "context_servers": {
+    "unified-context": {
+      "command": {
+        "path": "FULL_PATH_TO_UCTX_MCP",
+        "args": [],
+        "env": {
+          "UCTX_PROJECT_ROOT": "C:/Projects/my-app"
+        }
+      }
+    }
+  }
+}
+```
+
+> When switching projects in Zed, update `UCTX_PROJECT_ROOT` in your user settings, or omit it and let the server auto-detect from the working directory.
+
+See `.zed/ZED-SETUP.md` in your project for the pre-filled snippet.
 
 ---
 
@@ -98,8 +327,6 @@ uctx search <query>                # search all context files
 uctx index                         # rebuild INDEX.md
 uctx prune                         # remove conversations older than 30 days
 ```
-
-Supported `<ide>` values: `vscode`, `cursor`, `windsurf`, `claude-code`, `kiro`, `trae`, `zed`, `antigravity`
 
 ---
 
@@ -146,19 +373,16 @@ You start a feature in Cursor in the morning, hand off to a teammate using VS Co
 - What gotchas to watch out for (learnings)
 - What happened today across all sessions (daily log)
 
-No manual copy-paste. No lost context. Just commit `.uctx/` to git.
+No manual copy-paste. No lost context. Commit `.uctx/` to git and push.
 
 ---
 
-## Zed setup
+## Known limitations
 
-Zed uses user-level MCP config. After running `uctx setup zed`, merge the generated snippet into `~/.config/zed/settings.json`:
-
-```bash
-cat .zed/settings-uctx-snippet.json
-```
-
-See `.zed/ZED-SETUP.md` in your project for full instructions.
+- **Git sync is manual** — there is no auto-push. You must commit and push `.uctx/` changes yourself.
+- **Zed requires manual config merge** — `uctx setup zed` generates a snippet; you merge it into your user-level settings file.
+- **Task title collisions** — two tasks whose titles produce the same slug (e.g. `"Fix bug"` and `"Fix bug!"`) share one file; the second save overwrites the first silently.
+- **Monorepo root detection** — in a monorepo, `UCTX_PROJECT_ROOT` must be set explicitly in the MCP config to point to the correct sub-project; the auto-detect may latch onto the git root instead.
 
 ---
 
@@ -167,6 +391,7 @@ See `.zed/ZED-SETUP.md` in your project for full instructions.
 - Python 3.10+
 - Any MCP-compatible IDE (see table above)
 - Git (recommended, for cross-IDE sync)
+- [uv](https://docs.astral.sh/uv/) (recommended for install)
 
 ---
 

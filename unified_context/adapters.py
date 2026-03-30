@@ -19,7 +19,8 @@ MCP Config Differences (the #1 gotcha):
   └──────────────┴──────────────────────────────┴───────────────┘
 
 Windows notes:
-  - All commands use `uctx-mcp` (pip/uv creates .exe shims on Windows)
+  - `_uctx_mcp_cmd()` resolves the full path via shutil.which at setup time,
+    avoiding PATH lookup failures when the IDE launches with a minimal environment
   - Paths use os.sep but JSON configs use forward slashes per JSON convention
   - PowerShell is assumed as the default shell for hook scripts
 """
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from textwrap import dedent
@@ -35,6 +37,16 @@ from textwrap import dedent
 from .engine import UnifiedContextEngine
 
 IS_WINDOWS = sys.platform == "win32"
+
+
+def _uctx_mcp_cmd() -> str:
+    """Return the full path to uctx-mcp, falling back to bare name if not on PATH.
+
+    IDEs launch with a minimal environment that may not include the user's shell
+    PATH. Using the full path avoids 'command not found' errors at MCP startup.
+    """
+    full = shutil.which("uctx-mcp")
+    return full if full else "uctx-mcp"
 
 
 def generate_adapter_config(engine: UnifiedContextEngine, ide: str) -> list[str]:
@@ -93,7 +105,7 @@ def _gen_vscode(engine: UnifiedContextEngine) -> list[str]:
         "servers": {
             "unified-context": {
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -170,7 +182,7 @@ def _gen_claude_code(engine: UnifiedContextEngine) -> list[str]:
         "mcpServers": {
             "unified-context": {
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -210,7 +222,7 @@ def _gen_antigravity(engine: UnifiedContextEngine) -> list[str]:
         "servers": {
             "unified-context": {
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -235,7 +247,7 @@ def _gen_cursor(engine: UnifiedContextEngine) -> list[str]:
     mcp_config = {
         "mcpServers": {
             "unified-context": {
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -275,7 +287,7 @@ def _gen_windsurf(engine: UnifiedContextEngine) -> list[str]:
         "mcpServers": {
             "unified-context": {
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -317,7 +329,7 @@ def _gen_trae(engine: UnifiedContextEngine) -> list[str]:
             {
                 "name": "unified-context",
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -342,7 +354,7 @@ def _gen_kiro(engine: UnifiedContextEngine) -> list[str]:
         "mcpServers": {
             "unified-context": {
                 "type": "stdio",
-                "command": "uctx-mcp",
+                "command": _uctx_mcp_cmd(),
                 "args": [],
                 "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
             }
@@ -372,7 +384,7 @@ def _gen_zed(engine: UnifiedContextEngine) -> list[str]:
         "context_servers": {
             "unified-context": {
                 "command": {
-                    "path": "uctx-mcp",
+                    "path": _uctx_mcp_cmd(),
                     "args": [],
                     "env": {"UCTX_PROJECT_ROOT": _project_path_posix(engine)},
                 }

@@ -17,7 +17,8 @@
       "Bash(grep -n '```' \"F:/Projects/Personal/unified-context/documents/Architecture and Implementation Guide.md\")",
       "Bash(grep -c \"^\\\\`\\\\`\\\\`\" \"F:/Projects/Personal/unified-context/documents/Architecture and Implementation Guide.md\")",
       "Bash(python -c \"from unified_context.engine import UnifiedContextEngine; from unified_context.mcp_server import create_server; from unified_context.adapters import generate_adapter_config; print\\(''All imports OK''\\)\")",
-      "mcp__obsidian__obsidian_append_content"
+      "mcp__obsidian__obsidian_append_content",
+      "Bash(python -c \"from unified_context.adapters import generate_adapter_config, _uctx_mcp_cmd; print\\(''cmd:'', _uctx_mcp_cmd\\(\\)\\)\")"
     ]
   }
 }
