@@ -47,16 +47,18 @@ When you work across VS Code, Cursor, Windsurf, and Claude Code on the same proj
 ## Install
 
 ```bash
+uv tool install git+https://github.com/anilcelexsa/unified-context.git
+```
+
+This installs `uctx` and `uctx-mcp` as isolated CLI tools on your PATH — no virtual environment setup needed.
+
+Alternatively with pip:
+
+```bash
 pip install git+https://github.com/anilcelexsa/unified-context.git
 ```
 
-Or with uv:
-
-```bash
-uv add git+https://github.com/anilcelexsa/unified-context.git
-```
-
-Requires Python 3.10+.
+Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/) (recommended) or pip.
 
 ---
 
