@@ -4,14 +4,18 @@ Cross-IDE shared context for AI coding tools. One `.uctx/` directory, every IDE,
 
 When you work across VS Code, Cursor, Windsurf, and Claude Code on the same project, each AI agent starts from scratch every session. **unified-context** fixes that — it gives every IDE a shared memory backed by plain Markdown files in your repo.
 
+**✨ Now with:** 3-layer memory hierarchy (session/project/global), event-based checkpoints, ranked search, and git integration.
+
 ---
 
 ## How it works
 
 - A `.uctx/` directory in your project root stores conversations, tasks, solutions, learnings, and daily logs as human-readable Markdown + YAML
-- An MCP server (`uctx-mcp`) exposes that store to any MCP-compatible IDE as 17 tools
+- Global learnings stored at `~/.uctx/global/` — knowledge reused across all projects
+- An MCP server (`uctx-mcp`) exposes that store to any MCP-compatible IDE as 24 tools (17 core + 7 new)
 - Commit `.uctx/` to git and push — teammates and other IDEs stay in sync
 - The AI agent handles reading and writing context; you just work normally
+- Git context (commit hash, changed files) auto-captured and linked to all solutions and learnings
 
 ```
 .uctx/
@@ -332,7 +336,9 @@ uctx prune                         # remove conversations older than 30 days
 
 ## MCP tools
 
-The MCP server exposes 17 tools. All `project_path` parameters are optional — the server auto-detects the project root from the working directory.
+The MCP server exposes **24 tools** (17 core + 7 new). All `project_path` parameters are optional — the server auto-detects the project root from the working directory.
+
+### Core Tools (17)
 
 | Tool | Description |
 |------|-------------|
@@ -342,17 +348,27 @@ The MCP server exposes 17 tools. All `project_path` parameters are optional — 
 | `uctx_save_task` | Create or update a task |
 | `uctx_list_tasks` | List tasks by status |
 | `uctx_complete_task` | Mark a task done (by title or slug) |
-| `uctx_save_solution` | Record an implemented solution |
+| `uctx_save_solution` | Record an implemented solution (auto-captures git context) |
 | `uctx_list_solutions` | List all solutions |
-| `uctx_save_learning` | Record a gotcha, pattern, or bug |
+| `uctx_save_learning` | Record a gotcha, pattern, or bug (auto-captures git context) |
 | `uctx_list_learnings` | List all learnings |
 | `uctx_daily_log` | Append to today's log |
 | `uctx_get_daily_log` | Read today's (or a past) log |
 | `uctx_save_note` | Write a freeform note to `.uctx/architecture/` |
 | `uctx_read_file` | Read any file within `.uctx/` |
-| `uctx_search` | Full-text search across all context |
+| `uctx_search` | Full-text search with ranking by relevance/recency |
 | `uctx_stats` | Store summary (counts, size) |
 | `uctx_init` | Initialize the store |
+
+### New Tools (7)
+
+| Tool | Description |
+|------|-------------|
+| `uctx_checkpoint` | Save at event boundaries (after_fix, after_plan, after_bug_found, after_confirmed) |
+| `uctx_save_global_learning` | Save cross-project learning to `~/.uctx/global/` |
+| `uctx_list_global_learnings` | List all global learnings |
+| `uctx_search_global` | Search global learnings with ranking |
+| `uctx_search` (enhanced) | Now ranks by title/tags/body match + type + recency; supports `type_filter` |
 
 ### Session protocol
 
@@ -363,6 +379,49 @@ The generated IDE config files include instructions for the AI agent to follow t
 3. **Session end** — save a summary with `uctx_save_conversation`
 
 **Detailed guide:** See [UNIFIED-CONTEXT-INSTRUCTIONS.md](./.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md) for how AI agents should use these tools.
+
+---
+
+## Architecture Improvements
+
+### 1. Three-Layer Memory Hierarchy
+- **Session Memory** — ephemeral, in the AI's context window
+- **Project Memory** — persistent in `.uctx/`, shared across IDEs
+- **Global Memory** — persistent in `~/.uctx/global/`, reused across all projects
+
+Use `uctx_save_global_learning` to save cross-project knowledge (e.g., "Stripe webhook integration pattern", "FastAPI async pitfalls").
+
+### 2. Event-Based Checkpoints
+Instead of always calling individual save tools, use `uctx_checkpoint` to save at natural boundaries:
+
+```json
+uctx_checkpoint(
+  trigger="after_fix",
+  entry_type="solution",
+  title="Fixed race condition in database writes",
+  content="Added optimistic locking with version field...",
+  tags=["database", "concurrency"]
+)
+```
+
+Checkpoints automatically capture git context (commit hash, changed files) and trigger metadata.
+
+### 3. Ranked Search
+`uctx_search` now ranks results by relevance:
+- Title matches score higher (+3) than tag matches (+2) or body matches (+1)
+- Recent entries ranked higher than old ones
+- Type priority: solutions > tasks > learnings > conversations
+- Default returns top 5 results with scores
+
+Use `type_filter` to search only solutions, learnings, etc.
+
+### 4. Git Integration
+All solutions and learnings automatically capture:
+- **git_commit** — short commit hash (e.g., `a1b2c3d`)
+- **git_files** — list of changed files in that commit
+- Displayed inline in INDEX.md for easy navigation
+
+This links all knowledge to actual code changes and helps trace decisions back to commits.
 
 ---
 

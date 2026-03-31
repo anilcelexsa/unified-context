@@ -62,15 +62,26 @@ Stores your project's shared context as plain Markdown files:
 
 ```
 .uctx/
-├── INDEX.md                ← AI reads this first
+├── INDEX.md                ← AI reads this first (now with commit hashes)
 ├── uctx.yaml              ← project metadata
 ├── conversations/         ← session summaries
-├── solutions/             ← implemented solutions
+├── solutions/             ← implemented solutions (auto-linked to git commits)
 ├── tasks/                 ← pending and completed tasks
-├── learnings/             ← gotchas and patterns
+├── learnings/             ← gotchas and patterns (auto-linked to git commits)
 ├── architecture/          ← design docs and plans
 └── daily/                 ← activity log
 ```
+
+### Global Context Layer
+
+Additionally, `~/.uctx/global/` stores knowledge reused across **all projects:**
+
+```
+~/.uctx/global/
+└── learnings/             ← cross-project patterns, gotchas, solutions
+```
+
+Use `uctx_save_global_learning` to share discoveries across projects.
 
 ### The Session Protocol
 
@@ -140,6 +151,44 @@ Call `uctx_save_note`:
 }
 ```
 
+### "I want to save something at a natural boundary (after fix, after plan)"
+
+Call `uctx_checkpoint`:
+```json
+{
+  "trigger": "after_fix",
+  "entry_type": "solution",
+  "title": "Fixed race condition in auth tokens",
+  "content": "Added atomic check-and-update using database transaction...",
+  "tags": ["auth", "concurrency"]
+}
+```
+
+The checkpoint automatically captures git context (commit hash, changed files) and saves as a solution.
+
+### "I discovered something useful in another project"
+
+Call `uctx_save_global_learning`:
+```json
+{
+  "title": "Stripe webhook signature verification",
+  "category": "gotcha",
+  "description": "Always verify webhook signatures before processing. Never re-parse the body after middleware reads it — breaks signature verification.",
+  "tags": ["stripe", "webhooks", "security"]
+}
+```
+
+Now every project can reuse this knowledge via `uctx_search_global`.
+
+### "I want to search with better results"
+
+Call `uctx_search`:
+```bash
+uctx search "stripe webhook"
+```
+
+Results are now ranked by relevance (title matches score higher) and recency. You get top 5 results with scores instead of everything matching the keyword.
+
 ### "I want to see what happened in past sessions"
 
 ```bash
@@ -177,12 +226,24 @@ See [UPDATING.md](./UPDATING.md) for detailed instructions.
 
 ---
 
+## New Features
+
+**Introduced:** 3-layer memory hierarchy, event-based checkpoints, ranked search, git integration.
+
+- **Global Memory Layer** — Save cross-project learnings to `~/.uctx/global/` with `uctx_save_global_learning`
+- **Event Checkpoints** — Use `uctx_checkpoint` to save at natural boundaries (after_fix, after_plan, etc.)
+- **Ranked Search** — `uctx_search` now prioritizes relevant, recent results
+- **Git Integration** — Solutions and learnings auto-capture commit hash and changed files
+
+See **[README.md](./README.md#architecture-improvements)** for details.
+
 ## Documentation
 
-- **[MCP_TOOLS.md](./MCP_TOOLS.md)** — Complete reference for all 17 tools with examples
+- **[MCP_TOOLS.md](./MCP_TOOLS.md)** — Complete reference for all 24 tools (17 core + 7 new) with examples
 - **[.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md](./.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md)** — How AI agents should use the tools
 - **[UPDATING.md](./UPDATING.md)** — How to update the package
-- **[README.md](./README.md)** — Full feature overview and IDE setup
+- **[README.md](./README.md)** — Full feature overview, IDE setup, and architecture improvements
+- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** — Technical details of the 4 improvements
 
 ---
 

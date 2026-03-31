@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Complete guide to all 17 tools exposed by the unified-context MCP server.
+Complete guide to all 24 tools exposed by the unified-context MCP server (17 core + 7 new).
 
 ## Quick Start for Users
 
@@ -330,6 +330,176 @@ Claude Code starts → calls uctx_read_index → sees:
 
 ---
 
+## 🆕 New Tools (7)
+
+### Global Memory
+
+#### `uctx_save_global_learning`
+**Purpose:** Record cross-project knowledge that should be reused across all projects.
+
+**Who calls it:** You or the AI agent, when you discover a pattern or gotcha applicable to multiple projects.
+
+**Parameters:**
+- `title` (required) — e.g., `"Stripe webhook body parser issue"`
+- `category` (required) — `"bug"` | `"pattern"` | `"gotcha"` | `"performance"` | `"security"`
+- `description` (required) — the learning
+- `context` (optional) — context or example
+- `tags` (optional) — tags like `["stripe", "webhooks"]`
+
+**Saved location:** `~/.uctx/global/learnings/`
+
+**Example:**
+```json
+{
+  "title": "Stripe webhook body parser issue",
+  "category": "gotcha",
+  "description": "Stripe webhooks send raw body as `event_body`, not JSON. Never try to re-parse; it breaks signature verification.",
+  "context": "Spent 2 hours debugging why signatures failed after adding middleware that parsed JSON.",
+  "tags": ["stripe", "webhooks", "security"]
+}
+```
+
+**Why it matters:** Global learnings are reused across all projects. Next time you work on another project with Stripe, the AI can warn you about this gotcha before you hit it.
+
+---
+
+#### `uctx_list_global_learnings`
+**Purpose:** List all cross-project learnings from `~/.uctx/global/`.
+
+**Who calls it:** You, to browse global knowledge; the AI agent, to see what's been learned across projects.
+
+**Parameters:** None
+
+**Returns:** List of all global learnings with metadata.
+
+---
+
+#### `uctx_search_global`
+**Purpose:** Search global learnings with ranking by relevance and recency.
+
+**Who calls it:** You or the AI agent, when you need to find a pattern or solution applicable to multiple projects.
+
+**Parameters:**
+- `query` (required) — search term
+- `max_results` (default: 5) — top N results to return
+
+**Returns:** Ranked list of matching global learnings with scores.
+
+---
+
+### Event-Based Checkpoints
+
+#### `uctx_checkpoint` ⭐ NEW
+**Purpose:** Save knowledge at natural event boundaries without choosing a specific entry type.
+
+**Who calls it:** The AI agent, at natural checkpoints in development (after fixing a bug, after planning, etc.).
+
+**When to use:**
+- After fixing a non-trivial bug → save as solution
+- After discovering a pattern → save as learning
+- After user confirms something → save as task
+- At natural boundaries in work
+
+**Parameters:**
+- `project_path` (optional)
+- `trigger` (required) — `"after_fix"` | `"after_plan"` | `"after_bug_found"` | `"after_confirmed"`
+- `entry_type` (required) — `"solution"` | `"learning"` | `"task"`
+- `title` (required)
+- `content` (required) — main body/description
+- `tags` (optional)
+
+**Returns:** Status, entry type, trigger, and file path.
+
+**Example:**
+```json
+{
+  "trigger": "after_fix",
+  "entry_type": "solution",
+  "title": "Fixed race condition in database writes",
+  "content": "Added optimistic locking using version field. Increments version on each update; fails if version mismatch detected.",
+  "tags": ["database", "concurrency"]
+}
+```
+
+**Auto-captured:**
+- Git commit hash and changed files
+- Trigger metadata
+- Timestamp
+
+---
+
+### Enhanced Existing Tools
+
+#### `uctx_search` (Enhanced)
+**Purpose:** Full-text search with ranking by relevance and recency (instead of simple keyword matching).
+
+**New Parameters:**
+- `query` (required) — search term
+- `max_results` (default: 5, changed from 20) — returns top-ranked results only
+- `type_filter` (optional, default: all) — filter by `"solutions"`, `"learnings"`, `"conversations"`, `"tasks"`, or empty for all
+
+**Ranking Algorithm:**
+1. Title match: +3 points
+2. Tag match: +2 points
+3. Body match: +1 point
+4. Type priority: solutions (+2.0) > tasks (+1.2) > learnings (+1.5) > conversations (+1.0)
+5. Recency bonus: 1.0 for today, decay by 0.1 per day
+
+**Example:**
+```json
+{
+  "query": "stripe webhook",
+  "type_filter": "learnings",
+  "max_results": 5
+}
+
+// Returns:
+{
+  "results": [
+    {
+      "file": "learnings/stripe-webhook-gotcha.md",
+      "title": "Stripe webhook body parser issue",
+      "score": 8.7,
+      "preview": "Stripe webhooks send raw body as event_body, not JSON..."
+    }
+    // ... more results ranked by score
+  ]
+}
+```
+
+**Why the change:** The old search returned everything matching a keyword, unranked. The new ranking ensures you get the most relevant, recent results first.
+
+---
+
+## Git-Aware Context (Auto-Captured)
+
+When you call `uctx_save_solution` or `uctx_save_learning`, the MCP server automatically:
+
+1. Detects if the project is a git repo
+2. Captures the short commit hash (`git rev-parse --short HEAD`)
+3. Captures the list of changed files in that commit (`git diff-tree`)
+4. Stores them in `git_commit` and `git_files` fields
+
+**Displayed in INDEX.md:**
+```
+- [solutions/auth-refactor.md] — Auth Refactor `a1b2c3d`
+```
+
+**Example:**
+```json
+{
+  "title": "OAuth2 Password Grant Implementation",
+  "problem": "...",
+  "approach": "...",
+  "git_commit": "a1b2c3d",  // Auto-populated
+  "git_files": ["auth/handlers.py", "config/oauth.yaml"]  // Auto-populated
+}
+```
+
+**Why it matters:** Links every decision to actual code changes and specific commits, making it easy to trace decisions back to the work.
+
+---
+
 ## How to Invoke Tools
 
 ### Option 1: AI Agent (Automatic)
@@ -451,8 +621,10 @@ Some IDEs (Kiro) support auto-approval for read-only tools. Here's what should b
   "uctx_list_solutions",
   "uctx_list_tasks",
   "uctx_list_learnings",
+  "uctx_list_global_learnings",
   "uctx_get_daily_log",
   "uctx_search",
+  "uctx_search_global",
   "uctx_stats",
   "uctx_read_file"
 ]
