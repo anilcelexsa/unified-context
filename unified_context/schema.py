@@ -69,6 +69,13 @@ class Priority(str, Enum):
     CRITICAL = "critical"
 
 
+class TriggerType(str, Enum):
+    AFTER_FIX = "after_fix"
+    AFTER_PLAN = "after_plan"
+    AFTER_BUG_FOUND = "after_bug_found"
+    AFTER_USER_CONFIRMED = "after_confirmed"
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -100,6 +107,9 @@ class Solution:
     files_involved: list[str] = field(default_factory=list)
     related_conversations: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    git_commit: str = ""  # Auto-populated: short commit hash
+    git_files: list[str] = field(default_factory=list)  # Changed files in commit
+    trigger: str = ""  # Optional: checkpoint trigger that created this
 
 
 @dataclass
@@ -126,6 +136,10 @@ class Learning:
     description: str = ""
     context: str = ""
     tags: list[str] = field(default_factory=list)
+    git_commit: str = ""  # Auto-populated: short commit hash
+    git_files: list[str] = field(default_factory=list)  # Changed files in commit
+    scope: str = "project"  # 'project' or 'global' — auto-set, affects storage location
+    trigger: str = ""  # Optional: checkpoint trigger that created this
 
 
 @dataclass

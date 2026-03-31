@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -97,6 +98,110 @@ class UnifiedContextEngine:
         if not self.manifest_path.exists():
             return {}
         return yaml.safe_load(self.manifest_path.read_text()) or {}
+
+    def checkpoint(
+        self,
+        trigger: str,
+        entry_type: str,
+        title: str,
+        content: str,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Save a checkpoint entry at a natural boundary (after fix, plan, etc).
+
+        Args:
+            trigger: Checkpoint type ('after_fix', 'after_plan', 'after_bug_found', 'after_confirmed')
+            entry_type: What to save ('solution', 'learning', or 'task')
+            title: Title of the entry
+            content: Main content/description
+            tags: Optional tags
+
+        Returns:
+            dict with status and file path
+        """
+        tags = tags or []
+        git_ctx = self._get_git_context()
+
+        if entry_type == "solution":
+            sol = Solution(
+                title=title,
+                problem=content,  # Map checkpoint content to problem field
+                approach="",
+                implementation="",
+                tags=tags,
+                git_commit=git_ctx.get("commit", ""),
+                git_files=git_ctx.get("files", []),
+                trigger=trigger,
+            )
+            path = self.save_solution(sol)
+            return {
+                "status": "checkpointed",
+                "type": "solution",
+                "trigger": trigger,
+                "file": str(path.relative_to(self.root)),
+            }
+
+        elif entry_type == "learning":
+            learn = Learning(
+                title=title,
+                category="pattern",
+                description=content,
+                tags=tags,
+                git_commit=git_ctx.get("commit", ""),
+                git_files=git_ctx.get("files", []),
+                trigger=trigger,
+            )
+            path = self.save_learning(learn)
+            return {
+                "status": "checkpointed",
+                "type": "learning",
+                "trigger": trigger,
+                "file": str(path.relative_to(self.root)),
+            }
+
+        elif entry_type == "task":
+            task = Task(
+                title=title,
+                description=content,
+                status=TaskStatus.PENDING,
+                tags=tags,
+            )
+            path = self.save_task(task)
+            return {
+                "status": "checkpointed",
+                "type": "task",
+                "trigger": trigger,
+                "file": str(path.relative_to(self.root)),
+            }
+
+        else:
+            return {"error": f"Unknown entry type: {entry_type}"}
+
+    def _get_git_context(self) -> dict:
+        """Get current git commit info if in a git repo.
+
+        Returns:
+            dict with 'commit' (short hash) and 'files' (changed files) or empty dict
+        """
+        try:
+            # Get short commit hash
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=self.root,
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+
+            # Get list of changed files in the commit
+            files = subprocess.check_output(
+                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+                cwd=self.root,
+                stderr=subprocess.DEVNULL,
+            ).decode().strip().split("\n")
+            files = [f for f in files if f]  # Remove empty strings
+
+            return {"commit": commit, "files": files}
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return {}
 
     # ------------------------------------------------------------------
     # Conversations
@@ -268,33 +373,98 @@ class UnifiedContextEngine:
         return f"No log for {date}."
 
     # ------------------------------------------------------------------
-    # Search (simple keyword across all markdown)
+    # Search (keyword matching with ranking)
     # ------------------------------------------------------------------
-    def search(self, query: str, max_results: int = 20) -> list[dict]:
+    def search(self, query: str, max_results: int = 5, type_filter: str = "") -> list[dict]:
+        """Search all context files with scoring by recency, relevance, and type.
+
+        Args:
+            query: Search term(s)
+            max_results: Return top N results (default 5)
+            type_filter: Filter by type: 'solutions', 'learnings', 'conversations', or '' for all
+
+        Returns:
+            List of ranked results with score and preview
+        """
         query_lower = query.lower()
-        results = []
+        scored_results = []
+
         for md_file in self.uctx_dir.rglob("*.md"):
             if md_file.name == INDEX_FILE:
                 continue
+
+            # Filter by type if specified
+            file_type = str(md_file.relative_to(self.uctx_dir)).split("/")[0]
+            if type_filter and file_type != type_filter:
+                continue
+
             content = md_file.read_text()
+            if query_lower not in content.lower():
+                continue
+
+            # Parse frontmatter to extract metadata
+            try:
+                data = _from_frontmatter(content)
+            except Exception:
+                data = {"_body": content}
+
+            score = 0.0
+
+            # Score by match location (title > tags > body)
+            title = data.get("title", "").lower()
+            if query_lower in title:
+                score += 3.0
+
+            tags = [t.lower() for t in data.get("tags", [])]
+            if any(query_lower in tag for tag in tags):
+                score += 2.0
+
+            # Match in body (lower priority)
             if query_lower in content.lower():
-                rel = md_file.relative_to(self.uctx_dir)
-                # Extract first non-empty, non-frontmatter line as preview
-                lines = [
-                    l
-                    for l in content.split("\n")
-                    if l.strip() and not l.startswith("---")
-                ]
-                preview = lines[0][:200] if lines else ""
-                results.append(
-                    {
-                        "file": str(rel),
-                        "preview": preview,
-                    }
-                )
-                if len(results) >= max_results:
-                    break
-        return results
+                score += 1.0
+
+            # Recency score: newer files score higher
+            try:
+                created = data.get("created", "")
+                if created:
+                    created_dt = datetime.fromisoformat(created)
+                    days_old = (datetime.now(timezone.utc) - created_dt).days
+                    # 1.0 for today, decay by 0.1 per day (capped at 0)
+                    recency = max(0, 1.0 - (days_old * 0.1))
+                    score += recency
+            except (ValueError, TypeError):
+                pass
+
+            # Type priority for common queries
+            type_priority = {
+                "solutions": 2.0,
+                "learnings": 1.5,
+                "conversations": 1.0,
+                "tasks": 1.2,
+            }
+            score += type_priority.get(file_type, 0.5)
+
+            rel = md_file.relative_to(self.uctx_dir)
+            # Extract first non-empty, non-frontmatter line as preview
+            lines = [
+                l
+                for l in content.split("\n")
+                if l.strip() and not l.startswith("---")
+            ]
+            preview = lines[0][:200] if lines else ""
+
+            scored_results.append(
+                {
+                    "file": str(rel),
+                    "preview": preview,
+                    "score": round(score, 2),
+                    "title": data.get("title", ""),
+                }
+            )
+
+        # Sort by score descending, return top N
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        return scored_results[:max_results]
 
     # ------------------------------------------------------------------
     # Index Rebuild
@@ -333,13 +503,16 @@ class UnifiedContextEngine:
             lines.append(f"## {heading}")
             for f in files[:15]:  # cap for context window
                 rel = f.relative_to(self.uctx_dir)
-                # Try to extract title from frontmatter
+                # Try to extract title and git context from frontmatter
                 try:
                     data = _from_frontmatter(f.read_text())
                     title = data.get("title", f.stem.replace("-", " ").title())
+                    git_commit = data.get("git_commit", "")
+                    commit_suffix = f" `{git_commit}`" if git_commit else ""
                 except Exception:
                     title = f.stem.replace("-", " ").title()
-                lines.append(f"- [{rel}] — {title}")
+                    commit_suffix = ""
+                lines.append(f"- [{rel}] — {title}{commit_suffix}")
             lines.append("")
 
         index_path = self.uctx_dir / INDEX_FILE
@@ -404,3 +577,104 @@ class UnifiedContextEngine:
             )
             // 1024,
         }
+
+
+class GlobalContextEngine:
+    """Manages the global ~/.uctx/global/ store for cross-project knowledge."""
+
+    def __init__(self):
+        self.global_dir = Path.home() / ".uctx" / "global"
+
+    def _safe_write(self, path: Path, content: str):
+        """Write file with portalocker for concurrent-safe access."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with portalocker.Lock(str(path), mode="w", timeout=5) as fh:
+            fh.write(content)
+
+    def init(self):
+        """Initialize global context store."""
+        self.global_dir.mkdir(parents=True, exist_ok=True)
+        learnings_dir = self.global_dir / "learnings"
+        learnings_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_learning(self, learning: Learning) -> Path:
+        """Save a global learning to ~/.uctx/global/learnings/."""
+        self.init()  # Ensure directory exists
+        filename = f"{slugify(learning.title)}.md"
+        path = self.global_dir / "learnings" / filename
+        self._safe_write(path, _to_frontmatter(learning))
+        return path
+
+    def list_learnings(self) -> list[dict]:
+        """List all global learnings."""
+        learn_dir = self.global_dir / "learnings"
+        if not learn_dir.exists():
+            return []
+        results = []
+        for f in sorted(learn_dir.glob("*.md")):
+            data = _from_frontmatter(f.read_text())
+            data["_file"] = f.name
+            results.append(data)
+        return results
+
+    def search(self, query: str, max_results: int = 5) -> list[dict]:
+        """Search global learnings with ranking by relevance and recency."""
+        query_lower = query.lower()
+        scored_results = []
+
+        learn_dir = self.global_dir / "learnings"
+        if not learn_dir.exists():
+            return []
+
+        for md_file in learn_dir.glob("*.md"):
+            content = md_file.read_text()
+            if query_lower not in content.lower():
+                continue
+
+            try:
+                data = _from_frontmatter(content)
+            except Exception:
+                data = {"_body": content}
+
+            score = 0.0
+
+            # Score by match location
+            title = data.get("title", "").lower()
+            if query_lower in title:
+                score += 3.0
+
+            tags = [t.lower() for t in data.get("tags", [])]
+            if any(query_lower in tag for tag in tags):
+                score += 2.0
+
+            score += 1.0  # Base match
+
+            # Recency
+            try:
+                created = data.get("created", "")
+                if created:
+                    created_dt = datetime.fromisoformat(created)
+                    days_old = (datetime.now(timezone.utc) - created_dt).days
+                    recency = max(0, 1.0 - (days_old * 0.1))
+                    score += recency
+            except (ValueError, TypeError):
+                pass
+
+            lines = [
+                l
+                for l in content.split("\n")
+                if l.strip() and not l.startswith("---")
+            ]
+            preview = lines[0][:200] if lines else ""
+
+            scored_results.append(
+                {
+                    "file": f.name,
+                    "preview": preview,
+                    "score": round(score, 2),
+                    "title": data.get("title", ""),
+                }
+            )
+
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        return scored_results[:max_results]

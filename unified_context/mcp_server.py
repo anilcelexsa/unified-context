@@ -307,13 +307,25 @@ def create_server():
         ),
         Tool(
             name="uctx_search",
-            description="Search all context files for a keyword or phrase.",
+            description=(
+                "Search all context files with ranking by recency, relevance, and type. "
+                "Returns top results scored by title match, tags, body, and freshness."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "project_path": _PATH_PROP,
-                    "query": {"type": "string"},
-                    "max_results": {"type": "integer", "default": 20},
+                    "query": {"type": "string", "description": "Search term(s)"},
+                    "max_results": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Number of top-ranked results to return",
+                    },
+                    "type_filter": {
+                        "type": "string",
+                        "description": "Filter by type: 'solutions', 'learnings', 'conversations', 'tasks', or empty for all",
+                        "default": "",
+                    },
                 },
                 "required": ["query"],
             },
@@ -370,6 +382,84 @@ def create_server():
                     },
                 },
                 "required": ["filename", "content"],
+            },
+        ),
+        Tool(
+            name="uctx_save_global_learning",
+            description=(
+                "Record a cross-project learning, gotcha, or pattern to the global context store. "
+                "This makes the knowledge available across all projects."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "enum": ["bug", "pattern", "gotcha", "performance", "security"],
+                    },
+                    "description": {"type": "string"},
+                    "context": {"type": "string", "description": "Context or example"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["title", "category", "description"],
+            },
+        ),
+        Tool(
+            name="uctx_list_global_learnings",
+            description="List all cross-project learnings from the global store.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="uctx_search_global",
+            description=(
+                "Search global learnings across all projects with ranking. "
+                "Useful for finding patterns and gotchas you've encountered before."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search term(s)"},
+                    "max_results": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Number of results to return",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="uctx_checkpoint",
+            description=(
+                "Save a checkpoint entry at a natural event boundary (after fix, after plan, etc). "
+                "Automatically records git context and routes to the appropriate storage type."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_path": _PATH_PROP,
+                    "trigger": {
+                        "type": "string",
+                        "enum": ["after_fix", "after_plan", "after_bug_found", "after_confirmed"],
+                        "description": "What event triggered this checkpoint",
+                    },
+                    "entry_type": {
+                        "type": "string",
+                        "enum": ["solution", "learning", "task"],
+                        "description": "Type of entry to save",
+                    },
+                    "title": {"type": "string", "description": "Title of the entry"},
+                    "content": {
+                        "type": "string",
+                        "description": "Main content/description of the entry",
+                    },
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["trigger", "entry_type", "title", "content"],
             },
         ),
     ]
@@ -449,6 +539,7 @@ def _dispatch(engine, name: str, args: dict) -> dict:
         return {"conversations": engine.list_conversations(limit=args.get("limit", 10))}
 
     elif name == "uctx_save_solution":
+        git_ctx = engine._get_git_context()
         sol = Solution(
             title=args["title"],
             problem=args["problem"],
@@ -457,6 +548,8 @@ def _dispatch(engine, name: str, args: dict) -> dict:
             ide_origin=args.get("ide_origin", ""),
             files_involved=args.get("files_involved", []),
             tags=args.get("tags", []),
+            git_commit=git_ctx.get("commit", ""),
+            git_files=git_ctx.get("files", []),
         )
         path = engine.save_solution(sol)
         return {"status": "saved", "file": str(path.relative_to(engine.root))}
@@ -490,11 +583,14 @@ def _dispatch(engine, name: str, args: dict) -> dict:
         return {"status": "completed" if ok else "not_found", "slug": slug}
 
     elif name == "uctx_save_learning":
+        git_ctx = engine._get_git_context()
         learn = Learning(
             title=args["title"],
             category=args["category"],
             description=args["description"],
             tags=args.get("tags", []),
+            git_commit=git_ctx.get("commit", ""),
+            git_files=git_ctx.get("files", []),
         )
         path = engine.save_learning(learn)
         return {"status": "saved", "file": str(path.relative_to(engine.root))}
@@ -512,7 +608,9 @@ def _dispatch(engine, name: str, args: dict) -> dict:
     elif name == "uctx_search":
         return {
             "results": engine.search(
-                args["query"], max_results=args.get("max_results", 20)
+                args["query"],
+                max_results=args.get("max_results", 5),
+                type_filter=args.get("type_filter", ""),
             )
         }
 
@@ -532,6 +630,49 @@ def _dispatch(engine, name: str, args: dict) -> dict:
             subdir=args.get("subdir", "architecture"),
         )
         return {"status": "saved", "file": str(path.relative_to(engine.root))}
+
+    elif name == "uctx_save_global_learning":
+        from .engine import GlobalContextEngine
+
+        git_ctx = engine._get_git_context()
+        learn = Learning(
+            title=args["title"],
+            category=args["category"],
+            description=args["description"],
+            context=args.get("context", ""),
+            tags=args.get("tags", []),
+            git_commit=git_ctx.get("commit", ""),
+            git_files=git_ctx.get("files", []),
+            scope="global",
+        )
+        global_engine = GlobalContextEngine()
+        path = global_engine.save_learning(learn)
+        return {"status": "saved", "file": str(path.name), "scope": "global"}
+
+    elif name == "uctx_list_global_learnings":
+        from .engine import GlobalContextEngine
+
+        global_engine = GlobalContextEngine()
+        return {"learnings": global_engine.list_learnings()}
+
+    elif name == "uctx_search_global":
+        from .engine import GlobalContextEngine
+
+        global_engine = GlobalContextEngine()
+        return {
+            "results": global_engine.search(
+                args["query"], max_results=args.get("max_results", 5)
+            )
+        }
+
+    elif name == "uctx_checkpoint":
+        return engine.checkpoint(
+            trigger=args["trigger"],
+            entry_type=args["entry_type"],
+            title=args["title"],
+            content=args["content"],
+            tags=args.get("tags", []),
+        )
 
     else:
         return {"error": f"Unknown tool: {name}"}
