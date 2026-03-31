@@ -146,6 +146,7 @@ class ProjectManifest:
 # ---------------------------------------------------------------------------
 def _to_frontmatter(obj) -> str:
     """Serialize a dataclass to YAML frontmatter + markdown body."""
+    from enum import Enum
     d = asdict(obj) if hasattr(obj, "__dataclass_fields__") else dict(obj)
     # Separate body fields from metadata
     body_fields = {
@@ -157,6 +158,8 @@ def _to_frontmatter(obj) -> str:
         "context",
     }
     meta = {k: v for k, v in d.items() if k not in body_fields}
+    # Convert enum instances to plain string values so yaml.dump emits clean YAML
+    meta = {k: (v.value if isinstance(v, Enum) else v) for k, v in meta.items()}
     body_parts = []
     for bf in body_fields:
         if bf in d and d[bf]:
@@ -177,7 +180,11 @@ def _from_frontmatter(text: str) -> dict:
     match = re.match(pattern, text, re.DOTALL)
     if not match:
         return {"_body": text}
-    meta = yaml.safe_load(match.group(1)) or {}
+    try:
+        meta = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        # Fallback for files written with !!python/object/apply: enum tags
+        meta = yaml.load(match.group(1), Loader=yaml.FullLoader) or {}  # noqa: S506
     meta["_body"] = match.group(2).strip()
     return meta
 
