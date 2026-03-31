@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Complete guide to all 24 tools exposed by the unified-context MCP server (17 core + 7 new).
+Complete guide to all 22 tools exposed by the unified-context MCP server (17 core + 5 new).
 
 ## Quick Start for Users
 
@@ -20,15 +20,24 @@ However, if you want to manually invoke tools or understand what's happening, re
 
 These tools are read-only and typically don't require confirmation.
 
-#### `uctx_read_index`
-**Purpose:** Load the context overview at session start.
+#### `uctx_read_index` ⭐ ENHANCED
+**Purpose:** Load the context overview at session start, including auto-injected relevant global learnings.
 
 **Who calls it:** The AI agent, automatically at session start.
 
 **Parameters:**
 - `project_path` (optional) — defaults to current directory
 
-**Returns:** The full INDEX.md file with a routing table of all context sections.
+**Returns:**
+- `index` — The full INDEX.md file with a routing table of all context sections
+- `global_learnings` — Up to 5 relevant global learnings auto-matched to your project's tech stack and tags
+- `note` — Explanation of auto-loaded learnings
+
+**How auto-injection works:**
+1. Scans your project's tech stack from `uctx.yaml`
+2. Reads all learnings in `~/.uctx/global/learnings/`
+3. Matches by tech keywords and tag overlap
+4. Returns only relevant ones (e.g., if your project uses Stripe, returns Stripe-related global learnings)
 
 **Example use:**
 ```
@@ -37,7 +46,14 @@ Claude Code starts → calls uctx_read_index → sees:
   - 2 active solutions in progress
   - 5 past conversations
   - Recent learnings about async patterns
+
+  PLUS auto-injected global learnings:
+  - "Stripe webhook signature verification gotcha"
+  - "FastAPI async/await patterns"
+  (auto-loaded because your tech stack includes stripe, fastapi)
 ```
+
+**Why this matters:** You don't have to manually search or remember cross-project knowledge — it appears automatically in every session.
 
 ---
 
@@ -330,9 +346,9 @@ Claude Code starts → calls uctx_read_index → sees:
 
 ---
 
-## 🆕 New Tools (7)
+## 🆕 New Tools (5)
 
-### Global Memory
+### Global Memory & Auto-Injection
 
 #### `uctx_save_global_learning`
 **Purpose:** Record cross-project knowledge that should be reused across all projects.
@@ -348,6 +364,12 @@ Claude Code starts → calls uctx_read_index → sees:
 
 **Saved location:** `~/.uctx/global/learnings/`
 
+**How global learnings work:**
+1. You save a discovery with `uctx_save_global_learning`
+2. When you start a new project and call `uctx_read_index`, relevant global learnings are **automatically injected**
+3. The injection is smart: matches by tech stack and tags, only shows relevant ones
+4. No manual search needed
+
 **Example:**
 ```json
 {
@@ -359,31 +381,7 @@ Claude Code starts → calls uctx_read_index → sees:
 }
 ```
 
-**Why it matters:** Global learnings are reused across all projects. Next time you work on another project with Stripe, the AI can warn you about this gotcha before you hit it.
-
----
-
-#### `uctx_list_global_learnings`
-**Purpose:** List all cross-project learnings from `~/.uctx/global/`.
-
-**Who calls it:** You, to browse global knowledge; the AI agent, to see what's been learned across projects.
-
-**Parameters:** None
-
-**Returns:** List of all global learnings with metadata.
-
----
-
-#### `uctx_search_global`
-**Purpose:** Search global learnings with ranking by relevance and recency.
-
-**Who calls it:** You or the AI agent, when you need to find a pattern or solution applicable to multiple projects.
-
-**Parameters:**
-- `query` (required) — search term
-- `max_results` (default: 5) — top N results to return
-
-**Returns:** Ranked list of matching global learnings with scores.
+**Why it matters:** Global learnings are auto-injected into future projects. Next time you work on another project with Stripe, the AI will immediately see and warn about this gotcha — no manual search needed.
 
 ---
 
@@ -621,13 +619,11 @@ Some IDEs (Kiro) support auto-approval for read-only tools. Here's what should b
   "uctx_list_solutions",
   "uctx_list_tasks",
   "uctx_list_learnings",
-  "uctx_list_global_learnings",
   "uctx_get_daily_log",
   "uctx_search",
-  "uctx_search_global",
   "uctx_stats",
   "uctx_read_file"
 ]
 ```
 
-These tools don't modify state, so approval isn't necessary.
+These tools don't modify state, so approval isn't necessary. Note: Global learnings are automatically injected into `uctx_read_index`, so there's no separate search tool for them.

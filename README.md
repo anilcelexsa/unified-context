@@ -12,10 +12,11 @@ When you work across VS Code, Cursor, Windsurf, and Claude Code on the same proj
 
 - A `.uctx/` directory in your project root stores conversations, tasks, solutions, learnings, and daily logs as human-readable Markdown + YAML
 - Global learnings stored at `~/.uctx/global/` — knowledge reused across all projects
-- An MCP server (`uctx-mcp`) exposes that store to any MCP-compatible IDE as 24 tools (17 core + 7 new)
+- An MCP server (`uctx-mcp`) exposes that store to any MCP-compatible IDE as **22 tools** (17 core + 5 new)
 - Commit `.uctx/` to git and push — teammates and other IDEs stay in sync
 - The AI agent handles reading and writing context; you just work normally
 - Git context (commit hash, changed files) auto-captured and linked to all solutions and learnings
+- **Global learnings auto-injected** into every session based on project tech stack and tags
 
 ```
 .uctx/
@@ -336,13 +337,13 @@ uctx prune                         # remove conversations older than 30 days
 
 ## MCP tools
 
-The MCP server exposes **24 tools** (17 core + 7 new). All `project_path` parameters are optional — the server auto-detects the project root from the working directory.
+The MCP server exposes **22 tools** (17 core + 5 new). All `project_path` parameters are optional — the server auto-detects the project root from the working directory.
 
 ### Core Tools (17)
 
 | Tool | Description |
 |------|-------------|
-| `uctx_read_index` | Read INDEX.md — call this first at session start |
+| `uctx_read_index` | Read INDEX.md + auto-injected relevant global learnings — call this first at session start |
 | `uctx_save_conversation` | Save a session summary |
 | `uctx_list_conversations` | List recent sessions across all IDEs |
 | `uctx_save_task` | Create or update a task |
@@ -360,15 +361,14 @@ The MCP server exposes **24 tools** (17 core + 7 new). All `project_path` parame
 | `uctx_stats` | Store summary (counts, size) |
 | `uctx_init` | Initialize the store |
 
-### New Tools (7)
+### New Tools (5)
 
 | Tool | Description |
 |------|-------------|
 | `uctx_checkpoint` | Save at event boundaries (after_fix, after_plan, after_bug_found, after_confirmed) |
 | `uctx_save_global_learning` | Save cross-project learning to `~/.uctx/global/` |
-| `uctx_list_global_learnings` | List all global learnings |
-| `uctx_search_global` | Search global learnings with ranking |
-| `uctx_search` (enhanced) | Now ranks by title/tags/body match + type + recency; supports `type_filter` |
+| `uctx_search` (enhanced) | Ranks by title/tags/body match + type + recency; supports `type_filter` |
+| `uctx_read_index` (enhanced) | Auto-returns relevant global learnings based on tech stack/tags |
 
 ### Session protocol
 
@@ -387,9 +387,26 @@ The generated IDE config files include instructions for the AI agent to follow t
 ### 1. Three-Layer Memory Hierarchy
 - **Session Memory** — ephemeral, in the AI's context window
 - **Project Memory** — persistent in `.uctx/`, shared across IDEs
-- **Global Memory** — persistent in `~/.uctx/global/`, reused across all projects
+- **Global Memory** — persistent in `~/.uctx/global/`, automatically reused across all projects
 
-Use `uctx_save_global_learning` to save cross-project knowledge (e.g., "Stripe webhook integration pattern", "FastAPI async pitfalls").
+**How it works:**
+1. Save discoveries with `uctx_save_global_learning` (e.g., "Stripe webhook integration pattern", "FastAPI async pitfalls")
+2. When you start a new project, call `uctx_read_index`
+3. Relevant global learnings are **automatically injected** based on your project's tech stack and tags
+4. No manual search needed — the AI sees them immediately
+
+**Example:**
+```
+Project A (tech: stripe, fastapi):
+  → uctx_read_index returns:
+    - Project context
+    - Relevant global learnings: "Stripe webhook pattern", "FastAPI async pitfalls"
+
+Project B (tech: fastapi, postgres):
+  → uctx_read_index returns:
+    - Different project context
+    - Different relevant global learnings: "FastAPI async pitfalls", "PostgreSQL connection pooling"
+```
 
 ### 2. Event-Based Checkpoints
 Instead of always calling individual save tools, use `uctx_checkpoint` to save at natural boundaries:

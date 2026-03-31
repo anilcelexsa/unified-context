@@ -178,9 +178,9 @@ Call `uctx_save_global_learning`:
 }
 ```
 
-Now every project can reuse this knowledge via `uctx_search_global`.
+Now every project will automatically see this learning when you start a session. When you work on another project with Stripe in the tech stack, `uctx_read_index` will automatically inject this learning — no manual search needed.
 
-### "I want to search with better results"
+### "I want better search results"
 
 Call `uctx_search`:
 ```bash
@@ -228,9 +228,10 @@ See [UPDATING.md](./UPDATING.md) for detailed instructions.
 
 ## New Features
 
-**Introduced:** 3-layer memory hierarchy, event-based checkpoints, ranked search, git integration.
+**Introduced:** 3-layer memory hierarchy (with auto-injection!), event-based checkpoints, ranked search, git integration.
 
 - **Global Memory Layer** — Save cross-project learnings to `~/.uctx/global/` with `uctx_save_global_learning`
+- **Auto-Injection** — Relevant global learnings automatically appear in `uctx_read_index` based on your tech stack
 - **Event Checkpoints** — Use `uctx_checkpoint` to save at natural boundaries (after_fix, after_plan, etc.)
 - **Ranked Search** — `uctx_search` now prioritizes relevant, recent results
 - **Git Integration** — Solutions and learnings auto-capture commit hash and changed files
@@ -239,7 +240,7 @@ See **[README.md](./README.md#architecture-improvements)** for details.
 
 ## Documentation
 
-- **[MCP_TOOLS.md](./MCP_TOOLS.md)** — Complete reference for all 24 tools (17 core + 7 new) with examples
+- **[MCP_TOOLS.md](./MCP_TOOLS.md)** — Complete reference for all 22 tools (17 core + 5 new) with examples
 - **[.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md](./.claude/UNIFIED-CONTEXT-INSTRUCTIONS.md)** — How AI agents should use the tools
 - **[UPDATING.md](./UPDATING.md)** — How to update the package
 - **[README.md](./README.md)** — Full feature overview, IDE setup, and architecture improvements

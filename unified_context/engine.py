@@ -177,6 +177,74 @@ class UnifiedContextEngine:
         else:
             return {"error": f"Unknown entry type: {entry_type}"}
 
+    def _get_relevant_global_learnings(self, limit: int = 5) -> list[dict]:
+        """Get relevant global learnings based on project tech stack and tags.
+
+        Matches global learnings by:
+        1. Tech stack overlap (from uctx.yaml)
+        2. Tag overlap with project learnings
+        3. Keyword matching
+
+        Returns:
+            List of relevant global learning metadata
+        """
+        global_engine = GlobalContextEngine()
+        all_global = global_engine.list_learnings()
+        if not all_global:
+            return []
+
+        # Get project tech stack for matching
+        manifest = self.get_manifest()
+        tech_stack = [t.lower() for t in manifest.get("tech_stack", [])]
+
+        # Get tags from project learnings for context
+        project_tags = set()
+        learn_dir = self.uctx_dir / "learnings"
+        if learn_dir.exists():
+            for f in learn_dir.glob("*.md"):
+                try:
+                    data = _from_frontmatter(f.read_text())
+                    project_tags.update(t.lower() for t in data.get("tags", []))
+                except Exception:
+                    pass
+
+        # Score global learnings
+        scored = []
+        for learning in all_global:
+            score = 0.0
+
+            # Tech stack match
+            title_lower = learning.get("title", "").lower()
+            for tech in tech_stack:
+                if tech in title_lower:
+                    score += 3.0
+
+            # Tag overlap with project
+            learning_tags = [t.lower() for t in learning.get("tags", [])]
+            tag_overlap = len(set(learning_tags) & project_tags)
+            score += tag_overlap * 2.0
+
+            # Recency bonus
+            try:
+                created = learning.get("created", "")
+                if created:
+                    created_dt = datetime.fromisoformat(created)
+                    days_old = (datetime.now(timezone.utc) - created_dt).days
+                    recency = max(0, 1.0 - (days_old * 0.05))  # Slower decay than local
+                    score += recency
+            except (ValueError, TypeError):
+                pass
+
+            if score > 0:
+                scored.append({**learning, "_score": score})
+
+        # Sort by score, return top N
+        scored.sort(key=lambda x: x["_score"], reverse=True)
+        return [
+            {k: v for k, v in item.items() if not k.startswith("_")}
+            for item in scored[:limit]
+        ]
+
     def _get_git_context(self) -> dict:
         """Get current git commit info if in a git repo.
 

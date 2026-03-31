@@ -406,33 +406,6 @@ def create_server():
             },
         ),
         Tool(
-            name="uctx_list_global_learnings",
-            description="List all cross-project learnings from the global store.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-            },
-        ),
-        Tool(
-            name="uctx_search_global",
-            description=(
-                "Search global learnings across all projects with ranking. "
-                "Useful for finding patterns and gotchas you've encountered before."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search term(s)"},
-                    "max_results": {
-                        "type": "integer",
-                        "default": 5,
-                        "description": "Number of results to return",
-                    },
-                },
-                "required": ["query"],
-            },
-        ),
-        Tool(
             name="uctx_checkpoint",
             description=(
                 "Save a checkpoint entry at a natural event boundary (after fix, after plan, etc). "
@@ -514,12 +487,23 @@ def _dispatch(engine, name: str, args: dict) -> dict:
 
     elif name == "uctx_read_index":
         index_path = engine.uctx_dir / "INDEX.md"
+        if not index_path.exists():
+            engine.rebuild_index()
+
+        index_content = ""
         if index_path.exists():
-            return {"index": index_path.read_text()}
-        engine.rebuild_index()
-        if index_path.exists():
-            return {"index": index_path.read_text()}
-        return {"index": "No context store found. Run uctx_init first."}
+            index_content = index_path.read_text()
+        else:
+            index_content = "No context store found. Run uctx_init first."
+
+        # Auto-inject relevant global learnings
+        global_learnings = engine._get_relevant_global_learnings(limit=5)
+
+        return {
+            "index": index_content,
+            "global_learnings": global_learnings if global_learnings else None,
+            "note": "Global learnings auto-loaded based on your project's tech stack and tags"
+        }
 
     elif name == "uctx_save_conversation":
         conv = ConversationSummary(
@@ -648,22 +632,6 @@ def _dispatch(engine, name: str, args: dict) -> dict:
         global_engine = GlobalContextEngine()
         path = global_engine.save_learning(learn)
         return {"status": "saved", "file": str(path.name), "scope": "global"}
-
-    elif name == "uctx_list_global_learnings":
-        from .engine import GlobalContextEngine
-
-        global_engine = GlobalContextEngine()
-        return {"learnings": global_engine.list_learnings()}
-
-    elif name == "uctx_search_global":
-        from .engine import GlobalContextEngine
-
-        global_engine = GlobalContextEngine()
-        return {
-            "results": global_engine.search(
-                args["query"], max_results=args.get("max_results", 5)
-            )
-        }
 
     elif name == "uctx_checkpoint":
         return engine.checkpoint(

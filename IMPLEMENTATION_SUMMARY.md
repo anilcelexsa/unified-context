@@ -2,25 +2,49 @@
 
 This document summarizes the four architectural improvements made to unified-context based on ChatGPT's feedback.
 
-## Gap 1: Memory Hierarchy ✅
+**Final Tool Count:** 22 tools (17 core + 5 new)
+- Reduced from initial 24 via auto-injection: `uctx_list_global_learnings` and `uctx_search_global` removed (functionality integrated into enhanced `uctx_read_index`)
+
+## Gap 1: Memory Hierarchy with Auto-Injection ✅
 
 **Problem:** All context lives in a single layer scoped to the current project.
 
-**Solution:** Added a **global memory layer** at `~/.uctx/global/`.
+**Solution:** Added a **global memory layer** at `~/.uctx/global/` with **automatic injection** into every session.
+
+### Architecture:
+1. **Save** discoveries with `uctx_save_global_learning`
+2. **Auto-inject** when you call `uctx_read_index` in a new project
+3. Matching is smart: only returns relevant learnings based on:
+   - Project tech stack (from `uctx.yaml`)
+   - Tag overlap with project learnings
+   - Recency (newer learnings ranked higher)
 
 ### Changes:
 - Added `GlobalContextEngine` class in `engine.py`
-- New MCP tools:
-  - `uctx_save_global_learning` — save cross-project knowledge
-  - `uctx_list_global_learnings` — list global learnings
-  - `uctx_search_global` — search global learnings with ranking
+- Added `_get_relevant_global_learnings()` method for smart matching
+- New MCP tool: `uctx_save_global_learning` — save cross-project knowledge
+- Enhanced `uctx_read_index` — returns `global_learnings` field with auto-injected relevant learnings
 - Added `scope` field to `Learning` dataclass (`"project"` or `"global"`)
 
 ### Example Usage:
 ```
-Global learnings are automatically accessible across all projects.
-They can be searched and reused when similar issues appear.
+Day 1 (Project A - Stripe):
+  uctx_save_global_learning("Stripe webhook signature verification gotcha")
+
+Day 2 (Project B - Stripe + FastAPI):
+  uctx_read_index() → automatically includes:
+    - Project B context
+    - Relevant global learnings:
+      * "Stripe webhook signature verification gotcha" (matches "stripe" tech)
+      * "FastAPI async/await patterns" (matches "fastapi" tech)
+
+Day 3 (Project C - PostgreSQL only):
+  uctx_read_index() → includes:
+    - Project C context
+    - Different relevant global learnings (Stripe/FastAPI not relevant)
 ```
+
+**Why auto-injection?** No manual search needed. Relevant knowledge appears automatically every session.
 
 ---
 
@@ -133,20 +157,19 @@ Results sorted by score descending, return top N
 
 ---
 
-## New MCP Tools (7 total added)
+## New MCP Tools (5 total added)
 
-### Global Memory (3 tools)
+### Global Memory (1 tool)
 - `uctx_save_global_learning` — Save cross-project learning
-- `uctx_list_global_learnings` — List all global learnings
-- `uctx_search_global` — Search global learnings with ranking
+  - Global learnings are automatically injected into `uctx_read_index()` in other projects
 
 ### Event Checkpoints (1 tool)
 - `uctx_checkpoint` — Save at natural boundaries with trigger metadata
 
 ### Enhanced Existing (3 tool improvements)
+- `uctx_read_index` — Now auto-returns relevant global learnings (smart matching by tech stack/tags)
 - `uctx_search` — Now ranks by relevance/recency, supports type filtering
-- `uctx_save_solution` — Auto-captures git context
-- `uctx_save_learning` — Auto-captures git context
+- `uctx_save_solution` & `uctx_save_learning` — Auto-capture git context
 
 ---
 
